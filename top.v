@@ -36,7 +36,7 @@ module top(
     vga_controller vga(.clk(clk), .rst(rst), .hsync(hsync), .vsync(vsync), .video_on(video_on), .p_tick(p_tick), .x(x), .y(y));
     
     wire [15:0] num_string;
-    assign num_string = 16'b0001001000110100;
+    assign num_string = 20'b01010100001100100001;
     
     ascii_test(.clk(clk), .video_on(video_on), .x(x), .y(y), .num_string(num_string), .rgb(rgb_next));
     
