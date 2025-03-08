@@ -1,6 +1,7 @@
 module ascii_test(
     input clk,
     input video_on,
+    input show_number,
     input [9:0] x, y,
     input [19:0] num_string, // 4-digit input (e.g., 1234)
     output reg [11:0] rgb
@@ -37,9 +38,9 @@ module ascii_test(
     // Pixel Mapping
     assign char_row = y[3:0];
     assign bit_addr = x[2:0];
-
+    
     // Display region (top-left), ensure character data fits
-    assign ascii_bit_on = ((x >= 192 && x < 448) && (y >= 208 && y < 272)) ? ascii_bit : 1'b0;
+    assign ascii_bit_on = ((x >= 192 && x < 192 + 32*5) && (y >= 208 && y < 224)) && show_number ? ascii_bit : 1'b0;
 
     // Color Output
     always @*
