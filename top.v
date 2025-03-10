@@ -47,8 +47,8 @@ module top(
     reg [13:0] display_value;
     
     // RNG
-    wire [3:0] random_num;
-    reg [15:0] random_seed; 
+    wire [19:0] random_num;
+    reg [19:0] random_seed; 
     
     // Game Parameters and Values
     // Game states
