@@ -3,45 +3,89 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date: 03/05/2025 05:18:44 AM
+// Create Date: 03/03/2025 10:42:20 AM
 // Design Name: 
 // Module Name: top
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
 // Description: 
-//  Top-level module integrating VGA controller, keypad, 5-digit text input, and ASCII display.
+// 
 // Dependencies: 
-//  vga_controller, keypad, five_digit_text, ascii_test
+// 
 // Revision:
 // Revision 0.01 - File Created
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
+
 module top(
-    input clk,            // Clock input
-    input rst,            // Reset input
-    inout [7:0] JA,       // Keypad input/output
+    input wire clk,            // System clock
+    input wire rst,            // Reset signal (active high)
+    output wire [3:0] keypad_row,  // Keypad row outputs
+    input wire [3:0] keypad_col,   // Keypad column inputs
+    output wire [6:0] segments,    // 7-segment display segments
+    output wire [3:0] digit_sel,    // 7-segment display digit selector
     output hsync,         // VGA horizontal sync
     output vsync,         // VGA vertical sync
     output [11:0] rgb     // VGA color output
     );
     
-    // Signals for VGA
+    // Wire, register declarations
+    // VGA
     wire [9:0] x, y;          // VGA coordinates
     wire video_on, p_tick;    // Video signal and pixel tick
     reg [11:0] rgb_reg;       // RGB color register (to latch the color value)
     wire [11:0] rgb_next;     // RGB color output from ascii_test
     
-    // Signals for Keypad
-    wire [3:0] key;           // Current key pressed
+    // Keypad
+    wire [3:0] keypad_value;
     wire key_pressed;
     
-    // Wire for num_string (the 5-digit number)
-    wire [19:0] num_string;    // 5-digit input in a 20-bit register
-
-    // Instantiate the VGA controller
+    // Seven Segment Display
+    reg [13:0] display_value;
+    
+    // RNG
+    wire [3:0] random_num;
+    reg [15:0] random_seed; 
+    
+    // Game Parameters and Values
+    // Game states
+    localparam IDLE = 2'b00;             // Waiting for difficulty selection
+    localparam DISPLAY_SEQUENCE = 2'b01; // Displaying the sequence
+    localparam WAIT_INPUT = 2'b10;       // Waiting for player input
+    localparam GAME_OVER = 2'b11;        // Game over, displaying score
+    
+    // Difficulty levels
+    localparam EASY = 2'b00;
+    localparam MEDIUM = 2'b01;
+    localparam HARD = 2'b10;
+    
+    // Constants
+    localparam MAX_SEQUENCE_LENGTH = 100; // Maximum possible sequence length TODO
+    
+    // Internal registers and wires
+    reg [1:0] game_state;
+    reg [1:0] difficulty;
+    reg [13:0] score; // 0-9999
+    reg [3:0] current_sequence [0:MAX_SEQUENCE_LENGTH-1];
+    reg [6:0] sequence_length;
+    reg [6:0] display_index;
+    reg [6:0] input_index;
+    reg [3:0] input_buffer;
+    reg [31:0] timer_count;
+    
+    // Submodule instantiations
+    keypad keypad (
+        .clk(clk),
+        .rst(rst),
+        .row(keypad_row),
+        .col(keypad_col),
+        .value(keypad_value),
+        .key_pressed(key_pressed)
+    );
+    
     vga_controller vga(
         .clk(clk),
         .rst(rst),
@@ -53,36 +97,18 @@ module top(
         .y(y)
     );
     
-    // Instantiate the Keypad controller
-    keypad keypad(
-        .clk(clk),
-        .col(JA[3:0]),       // Column signals from keypad
-        .row(JA[7:4]),       // Row signals from keypad
-        .key_pressed(key_pressed),
-        .key(key)          // Current key pressed
-    );
-    
-    // Instantiate the 5-digit text input storage module
-    five_digit_text fdt(
-        .clk(clk),
-        .key(key),
-        .key_pressed(key_pressed),
-        .num_string(num_string)
-    );
-    
-    // Instantiate the ASCII display module
-    ascii_test ascii_test(
+    ascii_display ascii_display(
         .clk(clk),
         .video_on(video_on),
         .x(x),
         .y(y),
-        .show_number(1),      // Display the number on screen
+        .show_number(1),     
         .num_string(num_string),
-        .rgb(rgb_next)        // Output color for the current pixel
+        .rgb(rgb_next)       
     );
     
     // Latch the RGB value from the ASCII display module when the pixel tick is active
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (p_tick) begin
             rgb_reg <= rgb_next;  // Update RGB register on each pixel tick
         end
@@ -90,5 +116,7 @@ module top(
     
     // Output the RGB value to the VGA output
     assign rgb = rgb_reg;
-
+    
+    
+    
 endmodule
