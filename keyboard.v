@@ -1,101 +1,107 @@
-module keypad_controller (
-    input  wire       clk,
-    input  wire       rst,
-    output reg [3:0]  row,
-    input  wire [3:0]  col,
-    output reg [3:0]  value,
-    output reg        key_pressed
+module pmod_keypad(
+    input         clk,
+    input  [3:0]  row,
+    output reg [3:0] col,
+    output reg [3:0] key,
+    output reg    key_valid  // One‑clock pulse when a new key press is detected
 );
 
-    // Parameters for timing (assuming a 100MHz clock)
+    // Parameters for a 100 MHz clock
     localparam BITS           = 20;
-    localparam ONE_MS_TICKS   = 100_000;  // 1ms delay
-    localparam SETTLE_TIME    = 100;      // 1us settle time
+    localparam ONE_MS_TICKS   = 100000000 / 1000;   // 100,000 cycles ≈ 1 ms
+    localparam SETTLE_TIME    = 100000000 / 1000000;  // 100 cycles ≈ 1 µs
 
-    // 20-bit counter for scanning each row period
+    // Internal 20-bit counter (integrated instead of using counter_n)
     reg [BITS-1:0] key_counter;
-    // Which row is currently being scanned (0-3)
-    reg [1:0] row_scan;
-    // Used for positive edge detection of a key press
-    reg key_state;
-    reg key_last;
 
-    // Counter and scan state process
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
+    // Internal signals for key detection (for positive edge generation)
+    reg key_detected;
+    reg key_hold;
+
+    // Main always block: counter, scanning, and positive edge detection
+    always @(posedge clk) begin
+        // --- Counter Logic ---
+        // Increment counter until the end of a full scan cycle, then reset it.
+        if (key_counter < (4 * ONE_MS_TICKS + SETTLE_TIME))
+            key_counter <= key_counter + 1;
+        else
             key_counter <= 0;
-            row_scan    <= 0;
-            key_state   <= 0;
-            key_last    <= 0;
-            key_pressed <= 0;
-            row         <= 4'b1111;
-            value       <= 4'd0;
-        end else begin
-            // Increment the counter until the end of the row scan period
-            if (key_counter < ONE_MS_TICKS - 1)
-                key_counter <= key_counter + 1;
-            else begin
-                key_counter <= 0;
-                // Move to the next row (wrap around after row 3)
-                row_scan <= (row_scan == 2'd3) ? 2'd0 : row_scan + 1'b1;
-            end
 
-            // At the start of the scan period, drive the proper row signal
-            if (key_counter == 0) begin
-                case (row_scan)
-                    2'd0: row <= 4'b0111;
-                    2'd1: row <= 4'b1011;
-                    2'd2: row <= 4'b1101;
-                    2'd3: row <= 4'b1110;
-                    default: row <= 4'b1111;
+        // Clear key_detected by default each clock cycle.
+        key_detected <= 0;
+
+        // --- Scanning and Key Assignment ---
+        case (key_counter)
+            // --- First scan (approx. 1 ms period) ---
+            ONE_MS_TICKS: begin
+                col <= 4'b0111;
+            end
+            ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0001; key_detected <= 1; end // Key 1
+                    4'b1011: begin key <= 4'b0100; key_detected <= 1; end // Key 4
+                    4'b1101: begin key <= 4'b0111; key_detected <= 1; end // Key 7
+                    4'b1110: begin key <= 4'b0000; key_detected <= 1; end // Key 0
+                    default: key <= 4'b0000;
                 endcase
             end
 
-            // After a short settle time, sample the column inputs
-            if (key_counter == SETTLE_TIME) begin
-                if (col != 4'b1111) begin
-                    key_state <= 1;
-                    // Determine key value based on the current row_scan and col
-                    case (row_scan)
-                        2'd0: begin
-                            if (!col[0]) value <= 4'd1;      // Key 1
-                            else if (!col[1]) value <= 4'd2; // Key 2
-                            else if (!col[2]) value <= 4'd3; // Key 3
-                            else if (!col[3]) value <= 4'd10; // Key A
-                        end
-                        2'd1: begin
-                            if (!col[0]) value <= 4'd4;      // Key 4
-                            else if (!col[1]) value <= 4'd5; // Key 5
-                            else if (!col[2]) value <= 4'd6; // Key 6
-                            else if (!col[3]) value <= 4'd11; // Key B
-                        end
-                        2'd2: begin
-                            if (!col[0]) value <= 4'd7;      // Key 7
-                            else if (!col[1]) value <= 4'd8; // Key 8
-                            else if (!col[2]) value <= 4'd9; // Key 9
-                            else if (!col[3]) value <= 4'd12; // Key C
-                        end
-                        2'd3: begin
-                            if (!col[0]) value <= 4'd14;     // Key *
-                            else if (!col[1]) value <= 4'd0; // Key 0
-                            else if (!col[2]) value <= 4'd15; // Key #
-                            else if (!col[3]) value <= 4'd13; // Key D
-                        end
-                        default: value <= 4'd0;
-                    endcase
-                end else begin
-                    key_state <= 0;
-                end
+            // --- Second scan (approx. 2 ms period) ---
+            2 * ONE_MS_TICKS: begin
+                col <= 4'b1011;
+            end
+            2 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0010; key_detected <= 1; end // Key 2
+                    4'b1011: begin key <= 4'b0101; key_detected <= 1; end // Key 5
+                    4'b1101: begin key <= 4'b1000; key_detected <= 1; end // Key 8
+                    4'b1110: begin key <= 4'b1111; key_detected <= 1; end // Key F
+                    default: key <= 4'b0000;
+                endcase
             end
 
-            // At the end of each scan period, generate a one-clock pulse on rising edge
-            if (key_counter == ONE_MS_TICKS - 1) begin
-                if (key_state && !key_last)
-                    key_pressed <= 1;
-                else
-                    key_pressed <= 0;
-                key_last <= key_state;
+            // --- Third scan (approx. 3 ms period) ---
+            3 * ONE_MS_TICKS: begin
+                col <= 4'b1101;
             end
+            3 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0011; key_detected <= 1; end // Key 3
+                    4'b1011: begin key <= 4'b0110; key_detected <= 1; end // Key 6
+                    4'b1101: begin key <= 4'b1001; key_detected <= 1; end // Key 9
+                    4'b1110: begin key <= 4'b1110; key_detected <= 1; end // Key E
+                    default: key <= 4'b0000;
+                endcase
+            end
+
+            // --- Fourth scan (approx. 4 ms period) ---
+            4 * ONE_MS_TICKS: begin
+                col <= 4'b1110;
+            end
+            4 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b1010; key_detected <= 1; end // Key A
+                    4'b1011: begin key <= 4'b1011; key_detected <= 1; end // Key B
+                    4'b1101: begin key <= 4'b1100; key_detected <= 1; end // Key C
+                    4'b1110: begin key <= 4'b1101; key_detected <= 1; end // Key D
+                    default: key <= 4'b0000;
+                endcase
+            end
+
+            // Default: do nothing for other counter values.
+            default: ;
+        endcase
+
+        // --- Positive Edge Detection ---
+        // Generate a one-clock pulse on key_valid when a new key press is detected.
+        if (key_detected && !key_hold) begin
+            key_valid <= 1;
+            key_hold  <= 1;
+        end else begin
+            key_valid <= 0;
+            // Only clear key_hold when no key is detected, so that prolonged key presses don't retrigger.
+            if (!key_detected)
+                key_hold <= 0;
         end
     end
 
