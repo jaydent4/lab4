@@ -16,13 +16,13 @@ module pmod_keypad(
 
     // Main always block: counter, scanning, and key assignment
     always @(posedge clk) begin
-        // Counter Logic: Increment counter until a full scan cycle is completed
+        // Increment counter until the end of a full scan cycle, then reset it.
         if (key_counter < (4 * ONE_MS_TICKS + SETTLE_TIME))
             key_counter <= key_counter + 1;
         else
             key_counter <= 0;
 
-        // Scanning and Key Assignment
+        // Scanning and key assignment logic
         case (key_counter)
             // First scan (approx. 1 ms period)
             ONE_MS_TICKS: begin
@@ -80,9 +80,10 @@ module pmod_keypad(
                 endcase
             end
 
-            // Default: No change
+            // Default: do nothing
             default: ;
         endcase
+
     end
 
 endmodule
