@@ -3,7 +3,7 @@ module pmod_keypad(
     input  [3:0]  row,
     output reg [3:0] col,
     output reg [3:0] key,
-    output reg    key_valid  // One‑clock pulse when a new key press is detected
+    output reg    key_detected  // One-clock pulse when a new key press is detected
 );
 
     // Parameters for a 100 MHz clock
@@ -11,28 +11,20 @@ module pmod_keypad(
     localparam ONE_MS_TICKS   = 100000000 / 1000;   // 100,000 cycles ≈ 1 ms
     localparam SETTLE_TIME    = 100000000 / 1000000;  // 100 cycles ≈ 1 µs
 
-    // Internal 20-bit counter (integrated instead of using counter_n)
+    // Internal 20-bit counter
     reg [BITS-1:0] key_counter;
 
-    // Internal signals for key detection (for positive edge generation)
-    reg key_detected;
-    reg key_hold;
-
-    // Main always block: counter, scanning, and positive edge detection
+    // Main always block: counter, scanning, and key assignment
     always @(posedge clk) begin
-        // --- Counter Logic ---
-        // Increment counter until the end of a full scan cycle, then reset it.
+        // Counter Logic: Increment counter until a full scan cycle is completed
         if (key_counter < (4 * ONE_MS_TICKS + SETTLE_TIME))
             key_counter <= key_counter + 1;
         else
             key_counter <= 0;
 
-        // Clear key_detected by default each clock cycle.
-        key_detected <= 0;
-
-        // --- Scanning and Key Assignment ---
+        // Scanning and Key Assignment
         case (key_counter)
-            // --- First scan (approx. 1 ms period) ---
+            // First scan (approx. 1 ms period)
             ONE_MS_TICKS: begin
                 col <= 4'b0111;
             end
@@ -42,11 +34,11 @@ module pmod_keypad(
                     4'b1011: begin key <= 4'b0100; key_detected <= 1; end // Key 4
                     4'b1101: begin key <= 4'b0111; key_detected <= 1; end // Key 7
                     4'b1110: begin key <= 4'b0000; key_detected <= 1; end // Key 0
-                    default: key <= 4'b0000;
+                    default: begin key <= 4'b0000; key_detected <= 0; end
                 endcase
             end
 
-            // --- Second scan (approx. 2 ms period) ---
+            // Second scan (approx. 2 ms period)
             2 * ONE_MS_TICKS: begin
                 col <= 4'b1011;
             end
@@ -56,11 +48,11 @@ module pmod_keypad(
                     4'b1011: begin key <= 4'b0101; key_detected <= 1; end // Key 5
                     4'b1101: begin key <= 4'b1000; key_detected <= 1; end // Key 8
                     4'b1110: begin key <= 4'b1111; key_detected <= 1; end // Key F
-                    default: key <= 4'b0000;
+                    default: begin key <= 4'b0000; key_detected <= 0; end
                 endcase
             end
 
-            // --- Third scan (approx. 3 ms period) ---
+            // Third scan (approx. 3 ms period)
             3 * ONE_MS_TICKS: begin
                 col <= 4'b1101;
             end
@@ -70,11 +62,11 @@ module pmod_keypad(
                     4'b1011: begin key <= 4'b0110; key_detected <= 1; end // Key 6
                     4'b1101: begin key <= 4'b1001; key_detected <= 1; end // Key 9
                     4'b1110: begin key <= 4'b1110; key_detected <= 1; end // Key E
-                    default: key <= 4'b0000;
+                    default: begin key <= 4'b0000; key_detected <= 0; end
                 endcase
             end
 
-            // --- Fourth scan (approx. 4 ms period) ---
+            // Fourth scan (approx. 4 ms period)
             4 * ONE_MS_TICKS: begin
                 col <= 4'b1110;
             end
@@ -84,25 +76,13 @@ module pmod_keypad(
                     4'b1011: begin key <= 4'b1011; key_detected <= 1; end // Key B
                     4'b1101: begin key <= 4'b1100; key_detected <= 1; end // Key C
                     4'b1110: begin key <= 4'b1101; key_detected <= 1; end // Key D
-                    default: key <= 4'b0000;
+                    default: begin key <= 4'b0000; key_detected <= 0; end
                 endcase
             end
 
-            // Default: do nothing for other counter values.
+            // Default: No change
             default: ;
         endcase
-
-        // --- Positive Edge Detection ---
-        // Generate a one-clock pulse on key_valid when a new key press is detected.
-        if (key_detected && !key_hold) begin
-            key_valid <= 1;
-            key_hold  <= 1;
-        end else begin
-            key_valid <= 0;
-            // Only clear key_hold when no key is detected, so that prolonged key presses don't retrigger.
-            if (!key_detected)
-                key_hold <= 0;
-        end
     end
 
 endmodule
