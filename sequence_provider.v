@@ -11,7 +11,7 @@ module sequence_provider (
 
     // Initialize test sequences
     initial begin
-        test_sequences[0] = 20'd12345;  // 5-digit number: 12345
+        test_sequences[0] = 20'b00010010001101000101;  // 5-digit number: 12345
         test_sequences[1] = 20'd67890;  // 5-digit number: 67890
         test_sequences[2] = 20'd54321;  // 5-digit number: 54321
     end

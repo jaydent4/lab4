@@ -1,97 +1,91 @@
-// Keypad Controller Module - keypad_controller.v
-module keypad_controller (
-    input wire clk,
-    input wire rst,
-    output reg [3:0] row,
-    input wire [3:0] col,
-    output reg [3:0] value,
-    output reg key_pressed
+module pmod_keypad(
+    input         clk,
+    input  [3:0]  row,
+    output reg [3:0] col,
+    output reg [3:0] key,
+    output reg    key_detected  // One-clock pulse when a new key press is detected
 );
 
-    // Internal registers
-    reg [15:0] scan_timer;       // Debouncing timer
-    reg [1:0] row_scan;          // Current row being scanned
-    reg key_state;               // Current key state
-    reg key_last;                // Previous key state
-    
-    // Keypad scanning and debouncing
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            row <= 4'b1111;
-            value <= 4'd0;
-            row_scan <= 2'd0;
-            key_pressed <= 1'b0;
-            key_state <= 1'b0;
-            key_last <= 1'b0;
-            scan_timer <= 16'd0;
-        end else begin
-            key_pressed <= 1'b0; // Default state
-            
-            // Debouncing and scanning logic
-            if (scan_timer < 16'd1) begin
-                scan_timer <= scan_timer + 1'b1;
-            end else begin
-                scan_timer <= 16'd0;
-                
-                // Scan rows sequentially
-                case (row_scan)
-                    2'd0: row <= 4'b0111;
-                    2'd1: row <= 4'b1011;
-                    2'd2: row <= 4'b1101;
-                    2'd3: row <= 4'b1110;
-                endcase
-                
-                // Detect key press
-                if (col != 4'b1111) begin
-                    key_state <= 1'b1;
-                    
-                    // Determine key value based on row and column
-                    case (row_scan)
-                        2'd0: begin
-                            if (col[0] == 1'b0) value <= 4'd1;      // Key 1
-                            else if (col[1] == 1'b0) value <= 4'd2; // Key 2
-                            else if (col[2] == 1'b0) value <= 4'd3; // Key 3
-                            else if (col[3] == 1'b0) value <= 4'b1010; // Key A
-                        end
-                        2'd1: begin
-                            if (col[0] == 1'b0) value <= 4'd4;      // Key 4
-                            else if (col[1] == 1'b0) value <= 4'd5; // Key 5
-                            else if (col[2] == 1'b0) value <= 4'd6; // Key 6
-                            else if (col[3] == 1'b0) value <= 4'b1011; // Key B
-                        end
-                        2'd2: begin
-                            if (col[0] == 1'b0) value <= 4'd7;      // Key 7
-                            else if (col[1] == 1'b0) value <= 4'd8; // Key 8
-                            else if (col[2] == 1'b0) value <= 4'd9; // Key 9
-                            else if (col[3] == 1'b0) value <= 4'b1100; // Key C
-                        end
-                        2'd3: begin
-                            if (col[0] == 1'b0) value <= 4'd0;     // Key 0
-                            else if (col[1] == 1'b0) value <= 4'b1111; // Key F
-                            else if (col[2] == 1'b0) value <= 4'b1110; // Key E
-                            else if (col[3] == 1'b0) value <= 4'b1101; // Key D
-                        end
-                    endcase
-                end else begin
-                    key_state <= 1'b0;
-                end
-                
-                // Detect rising edge of key press
-                if (key_state == 1'b1 && key_last == 1'b0) begin
-                    key_pressed <= 1'b1;
-                end
-                
-                key_last <= key_state;
-                
-                // Move to next row
-                if (row_scan == 2'd3) begin
-                    row_scan <= 2'd0;
-                end else begin
-                    row_scan <= row_scan + 1'b1;
-                end
+    // Parameters for a 100 MHz clock
+    localparam BITS           = 20;
+    localparam ONE_MS_TICKS   = 100000000 / 1000;   // 100,000 cycles ≈ 1 ms
+    localparam SETTLE_TIME    = 100000000 / 1000000;  // 100 cycles ≈ 1 µs
+
+    // Internal 20-bit counter (integrated instead of using counter_n)
+    reg [BITS-1:0] key_counter;
+
+    // Main always block: counter, scanning, and positive edge detection
+    always @(posedge clk) begin
+        // --- Counter Logic ---
+        // Increment counter until the end of a full scan cycle, then reset it.
+        if (key_counter < (4 * ONE_MS_TICKS + SETTLE_TIME))
+            key_counter <= key_counter + 1;
+        else
+            key_counter <= 0;
+
+
+        // --- Scanning and Key Assignment ---
+        case (key_counter)
+            // --- First scan (approx. 1 ms period) ---
+            ONE_MS_TICKS: begin
+                col <= 4'b0111;
             end
-        end
+            ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0001; key_detected <= 1; end // Key 1
+                    4'b1011: begin key <= 4'b0100; key_detected <= 1; end // Key 4
+                    4'b1101: begin key <= 4'b0111; key_detected <= 1; end // Key 7
+                    4'b1110: begin key <= 4'b0000; key_detected <= 1; end // Key 0
+                    default: begin key <= 4'b0000; key_detected <= 0; end
+                endcase
+            end
+
+            // --- Second scan (approx. 2 ms period) ---
+            2 * ONE_MS_TICKS: begin
+                col <= 4'b1011;
+            end
+            2 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0010; key_detected <= 1; end // Key 2
+                    4'b1011: begin key <= 4'b0101; key_detected <= 1; end // Key 5
+                    4'b1101: begin key <= 4'b1000; key_detected <= 1; end // Key 8
+                    4'b1110: begin key <= 4'b1111; key_detected <= 1; end // Key F
+                    default: begin key <= 4'b0000; key_detected <= 0; end
+                endcase
+            end
+
+            // --- Third scan (approx. 3 ms period) ---
+            3 * ONE_MS_TICKS: begin
+                col <= 4'b1101;
+            end
+            3 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b0011; key_detected <= 1; end // Key 3
+                    4'b1011: begin key <= 4'b0110; key_detected <= 1; end // Key 6
+                    4'b1101: begin key <= 4'b1001; key_detected <= 1; end // Key 9
+                    4'b1110: begin key <= 4'b1110; key_detected <= 1; end // Key E
+                    default: begin key <= 4'b0000; key_detected <= 0; end
+                endcase
+            end
+
+            // --- Fourth scan (approx. 4 ms period) ---
+            4 * ONE_MS_TICKS: begin
+                col <= 4'b1110;
+            end
+            4 * ONE_MS_TICKS + SETTLE_TIME: begin
+                case (row)
+                    4'b0111: begin key <= 4'b1010; key_detected <= 1; end // Key A
+                    4'b1011: begin key <= 4'b1011; key_detected <= 1; end // Key B
+                    4'b1101: begin key <= 4'b1100; key_detected <= 1; end // Key C
+                    4'b1110: begin key <= 4'b1101; key_detected <= 1; end // Key D
+                    default: begin key <= 4'b0000; key_detected <= 0; end
+                endcase
+            end
+
+            // Default: do nothing for other counter values.
+            default: ;
+        endcase
+
     end
 
 endmodule
-
