@@ -36,7 +36,7 @@ module memorization_game (
     reg [19:0] current_sequence;
     reg [19:0] input_buffer;
     reg [19:0] key_buffer;
-    reg key_pulse;          // Synchronized one-clock pulse for key press
+    reg key_pulse;    // Synchronized one-clock pulse for key press
     reg [2:0]  digit_count;
     
     wire [3:0] keypad_value;
@@ -47,23 +47,19 @@ module memorization_game (
     wire key_detected;
     wire [19:0] sequence_out;
     
-    // Double flip-flop synchronizer for key_detected
-    reg key_detected_sync, key_detected_sync_d;
+    // Synchronous rising-edge detection for key_detected:
+    // Use a register to hold the previous value of key_detected so that a transition from 0->1
+    // updates key_buffer, digit_count and generates a one‑clock key_pulse.
+    reg prev_key_detected;
     always @(posedge clk) begin
-        key_detected_sync   <= key_detected;
-        key_detected_sync_d <= key_detected_sync;
-    end
-
-    // Synchronous rising-edge detection for key press
-    always @(posedge clk) begin
-        if (~key_detected_sync_d & key_detected_sync) begin
-            // On a rising edge, update key_buffer and digit_count
+        if (key_detected & ~prev_key_detected) begin
             key_buffer  <= { key_buffer[15:0], keypad_value };
             digit_count <= digit_count + 1;
             key_pulse   <= 1'b1;
         end else begin
             key_pulse   <= 1'b0;
         end
+        prev_key_detected <= key_detected;
     end
 
     pmod_keypad keypad_inst (
@@ -83,6 +79,8 @@ module memorization_game (
 
     wire [9:0] x, y;          // VGA coordinates
     wire video_on, p_tick;    // Video signal and pixel tick
+    reg [11:0] rgb_reg;       // RGB color register (to latch the color value)
+    wire [11:0] rgb_next;     // RGB color output from ascii_test
 
     vga_controller vga(
         .clk(clk),
@@ -113,7 +111,7 @@ module memorization_game (
         .digit_sel(digit_sel)
     );
   
-    // Main game state machine using synchronized key_pulse
+    // Synchronized main state machine
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             game_state      <= ST_IDLE;
@@ -128,14 +126,13 @@ module memorization_game (
             sequence_index  <= 2'd0;
             key_pulse       <= 1'b0;
         end else begin
-            // Update input_buffer when a key press pulse occurs
-            if (key_pulse) begin
+            // Update input_buffer when a key press pulse occurs.
+            if (key_pulse)
                 input_buffer <= key_buffer;
-            end
 
             case (game_state)
                 ST_IDLE: begin
-                    if (key_pulse) begin
+                    if (key_detected) begin
                         case (keypad_value)
                             4'd1: difficulty <= EASY;
                             4'd2: difficulty <= MEDIUM;
@@ -182,6 +179,7 @@ module memorization_game (
                 end
 
                 ST_GAME_OVER: begin
+                    // Use the synchronized key_pulse so that a new press (with keypad_value == 15) resets the game.
                     if (key_pulse && (keypad_value == 4'd15))
                         game_state <= ST_IDLE;
                 end
@@ -191,7 +189,7 @@ module memorization_game (
         end
     end
 
-    // LED assignment to display game state (here using digit_count; adjust if needed)
+    // LED logic to show game state (using digit_count; adjust as needed)
     assign led = digit_count;
 
 endmodule
