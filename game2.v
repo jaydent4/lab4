@@ -117,7 +117,7 @@ module memorization_game (
             key_pulse        <= 1'b0;
             prev_key_detected<= 1'b0;
         end else begin
-            // Detect rising edge of key_detected
+            // Detect rising edge of key_detected using a previous-value register
             if (key_detected && ~prev_key_detected) begin
                 key_buffer  <= { key_buffer[15:0], keypad_value };
                 digit_count <= digit_count + 1;
@@ -131,10 +131,10 @@ module memorization_game (
             if (key_pulse)
                 input_buffer <= key_buffer;
                 
-            // Main game state machine
+            // Main game state machine using the rising-edge pulse (key_pulse)
             case (game_state)
                 ST_IDLE: begin
-                    if (key_detected) begin
+                    if (key_pulse) begin
                         case (keypad_value)
                             4'd1: difficulty <= EASY;
                             4'd2: difficulty <= MEDIUM;
@@ -181,7 +181,7 @@ module memorization_game (
                 end
 
                 ST_GAME_OVER: begin
-                    // Use the rising edge detected key (via key_pulse) to reset the game.
+                    // Use the rising-edge detected key (via key_pulse) to reset the game.
                     if (key_pulse && (keypad_value == 4'd15))
                         game_state <= ST_IDLE;
                 end
