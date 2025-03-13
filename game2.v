@@ -99,33 +99,40 @@ module memorization_game (
         .digit_sel(digit_sel)
     );
   
-    // Combined always block for key detection and state machine
+    // Combined always block for key detection and state machine.
+    // Added a key_lock register to latch the key press.
     reg prev_key_detected;
+    reg key_lock;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             // Reset all registers
-            game_state       <= ST_IDLE;
-            difficulty       <= EASY;
-            score            <= 14'd0;
-            input_index      <= 7'd0;
-            input_buffer     <= 20'd0;
-            key_buffer       <= 20'd0;
-            digit_count      <= 3'd0;
-            video_timer      <= 24'd0;
-            show_number      <= 1'b0;
-            sequence_index   <= 2'd0;
-            key_pulse        <= 1'b0;
-            prev_key_detected<= 1'b0;
+            game_state        <= ST_IDLE;
+            difficulty        <= EASY;
+            score             <= 14'd0;
+            input_index       <= 7'd0;
+            input_buffer      <= 20'd0;
+            key_buffer        <= 20'd0;
+            digit_count       <= 3'd0;
+            video_timer       <= 24'd0;
+            show_number       <= 1'b0;
+            sequence_index    <= 2'd0;
+            key_pulse         <= 1'b0;
+            prev_key_detected <= 1'b0;
+            key_lock          <= 1'b0;
         end else begin
-            // Detect rising edge of key_detected using a previous-value register
-            if (key_detected && ~prev_key_detected) begin
+            // Detect a rising edge only if key_lock is low.
+            if (key_detected && ~prev_key_detected && ~key_lock) begin
                 key_buffer  <= { key_buffer[15:0], keypad_value };
                 digit_count <= digit_count + 1;
                 key_pulse   <= 1'b1;
+                key_lock    <= 1'b1;  // Latch the key press
             end else begin
                 key_pulse   <= 1'b0;
             end
             prev_key_detected <= key_detected;
+            // Release key_lock when key_detected goes low.
+            if (!key_detected)
+                key_lock <= 1'b0;
             
             // Update input_buffer when a key press pulse occurs
             if (key_pulse)
