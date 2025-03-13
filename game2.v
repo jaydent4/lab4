@@ -36,7 +36,7 @@ module memorization_game (
     reg [19:0] current_sequence;
     reg [19:0] input_buffer;
     reg [19:0] key_buffer;
-    reg key_pulse;    // Synchronized one-clock pulse for key press
+    reg key_pulse;  // One-clock pulse generated when a rising edge is detected
     reg [2:0]  digit_count;
     
     wire [3:0] keypad_value;
@@ -47,21 +47,7 @@ module memorization_game (
     wire key_detected;
     wire [19:0] sequence_out;
     
-    // Synchronous rising-edge detection for key_detected:
-    // Use a register to hold the previous value of key_detected so that a transition from 0->1
-    // updates key_buffer, digit_count and generates a one‑clock key_pulse.
-    reg prev_key_detected;
-    always @(posedge clk) begin
-        if (key_detected & ~prev_key_detected) begin
-            key_buffer  <= { key_buffer[15:0], keypad_value };
-            digit_count <= digit_count + 1;
-            key_pulse   <= 1'b1;
-        end else begin
-            key_pulse   <= 1'b0;
-        end
-        prev_key_detected <= key_detected;
-    end
-
+    // pmod_keypad instance
     pmod_keypad keypad_inst (
         .clk         (clk),
         .row         (JA[7:4]),
@@ -70,6 +56,7 @@ module memorization_game (
         .key_detected(key_detected)
     );
 
+    // Sequence provider instance
     sequence_provider sequence_inst (
         .clk(clk),
         .rst(rst),
@@ -77,6 +64,7 @@ module memorization_game (
         .sequence_out(sequence_out)
     );
 
+    // VGA and display modules remain unchanged
     wire [9:0] x, y;          // VGA coordinates
     wire video_on, p_tick;    // Video signal and pixel tick
     reg [11:0] rgb_reg;       // RGB color register (to latch the color value)
@@ -111,25 +99,39 @@ module memorization_game (
         .digit_sel(digit_sel)
     );
   
-    // Synchronized main state machine
+    // Combined always block for key detection and state machine
+    reg prev_key_detected;
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            game_state      <= ST_IDLE;
-            difficulty      <= EASY;
-            score           <= 14'd0;
-            input_index     <= 7'd0;
-            input_buffer    <= 20'd0;
-            key_buffer      <= 20'd0;
-            digit_count     <= 3'd0;
-            video_timer     <= 24'd0;
-            show_number     <= 1'b0;
-            sequence_index  <= 2'd0;
-            key_pulse       <= 1'b0;
+            // Reset all registers
+            game_state       <= ST_IDLE;
+            difficulty       <= EASY;
+            score            <= 14'd0;
+            input_index      <= 7'd0;
+            input_buffer     <= 20'd0;
+            key_buffer       <= 20'd0;
+            digit_count      <= 3'd0;
+            video_timer      <= 24'd0;
+            show_number      <= 1'b0;
+            sequence_index   <= 2'd0;
+            key_pulse        <= 1'b0;
+            prev_key_detected<= 1'b0;
         end else begin
-            // Update input_buffer when a key press pulse occurs.
+            // Detect rising edge of key_detected
+            if (key_detected && ~prev_key_detected) begin
+                key_buffer  <= { key_buffer[15:0], keypad_value };
+                digit_count <= digit_count + 1;
+                key_pulse   <= 1'b1;
+            end else begin
+                key_pulse   <= 1'b0;
+            end
+            prev_key_detected <= key_detected;
+            
+            // Update input_buffer when a key press pulse occurs
             if (key_pulse)
                 input_buffer <= key_buffer;
-
+                
+            // Main game state machine
             case (game_state)
                 ST_IDLE: begin
                     if (key_detected) begin
@@ -179,7 +181,7 @@ module memorization_game (
                 end
 
                 ST_GAME_OVER: begin
-                    // Use the synchronized key_pulse so that a new press (with keypad_value == 15) resets the game.
+                    // Use the rising edge detected key (via key_pulse) to reset the game.
                     if (key_pulse && (keypad_value == 4'd15))
                         game_state <= ST_IDLE;
                 end
@@ -189,7 +191,7 @@ module memorization_game (
         end
     end
 
-    // LED logic to show game state (using digit_count; adjust as needed)
+    // LED logic to show game state (here simply using digit_count)
     assign led = digit_count;
 
 endmodule
